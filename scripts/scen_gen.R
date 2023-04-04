@@ -15,7 +15,7 @@ library(ggnewscale)
 
 concern.start <- 1 # Pristine concern per unit area
 product.start <- 1 # Pristine product per unit area
-demand.spec <- 0.5 # Spectrum of demands to explore
+demand.spec <- seq(0.1,0.1,0) # Spectrum of demands to explore
 reserve.spec <- seq(0,0.99,0.01) # Spectrum of reserve sizes to explore
 sensitivity.spec <- seq(0.01,1,0.01) # Spectrum of sensitivities to explore
 
@@ -24,15 +24,15 @@ sensitivity.spec <- seq(0.01,1,0.01) # Spectrum of sensitivities to explore
 
 efficiency.func <- function(sensitivity, efficiency.option){
   if(efficiency.option == 1){ # Efficiency and sensitivity are independent
-    efficiency <- 0.5
+    efficiency <- 1
     return(efficiency)
   } else if(efficiency.option == 2){ # Efficiency and sensitivity are the same
     efficiency <- sensitivity
     return(efficiency)
-  } else if(efficiency.option == 3){ # Efficiency increases with diminishing returns
+  } else if(efficiency.option == 3){ # Efficiency increases quickly, then with diminishing returns
     efficiency <- sensitivity^(1/2)
     return(efficiency)
-  } else if(efficiency.option == 4){ # Efficiency increases with compounding returns
+  } else if(efficiency.option == 4){ # Efficiency increases slowly, then with compounding returns
     efficiency <- sensitivity^2
     return(efficiency)
   }
@@ -48,6 +48,9 @@ efficiency.plot <- ggplot(efficiency.df, aes(x = sensitivity, y = efficiency)) +
   geom_line() +
   scale_x_continuous(name = "Sensitivity") +
   scale_y_continuous(name = "Efficiency") +
+  geom_abline(slope = 1,
+              intercept = 0,
+              linetype = "dotted") +
   theme_bw()
 efficiency.plot
 
@@ -67,7 +70,7 @@ availability.func <- function(reserve, availability.option){
 }
 
 # Plot relationship between reserve and availability
-availability.option <- 3
+availability.option <- 1
 reserve <- seq(0,0.99,0.01)
 availability <- availability.func(reserve = reserve,
                                   availability.option = availability.option)
@@ -76,8 +79,33 @@ availability.plot <- ggplot(availability.df, aes(x = reserve, y = availability))
   geom_line() +
   scale_x_continuous(name = "Reserve") +
   scale_y_continuous(name = "Availability") +
+  geom_abline(slope = -1,
+              intercept = 1,
+              linetype = "dotted") +
   theme_bw()
 availability.plot
+
+# Plot relationship between production intensity and amount of concern
+loss.exponent <- (1) # x > 1 = concave density-yield. 1 < x < 0 = convex density-yield
+loss.scale <- 1
+demand <- seq(0,1,0.01)
+reserve <- 0
+sensitivity <- 1
+(intensity <- demand / (efficiency * availability.func(reserve, availability.option)))
+(loss <- (((concern.start * (1-reserve)) * sensitivity * intensity)^loss.exponent)*loss.scale)
+# If the loss is greater than the concern in the productive zone, then everything, but no more than that, is lost in the productive zone
+(loss <- ifelse(loss > (concern.start * (1-reserve)), (concern.start * (1-reserve)), loss))
+(concern <- concern.start - loss)
+concern.df <- cbind.data.frame(demand, concern)
+concern.plot <- ggplot(concern.df, aes(x = demand, y = concern)) +
+  geom_line() +
+  scale_x_continuous(name = "Demand") +
+  scale_y_continuous(name = "Concern") +
+  geom_abline(slope = -1,
+              intercept = 1,
+              linetype = "dotted") +
+  theme_bw()
+concern.plot
 
 # Generate results ####
 
@@ -106,9 +134,9 @@ for(i in demand.spec){ # Demand
           (fulfillment <- efficiency * intensity * availability.func(reserve, availability.option))
           # If fulfillment is less than available product given reserve, continue, else end the simulation
           if(fulfillment < availability.func(reserve, availability.option)){
-            (loss <- (concern.start * (1-reserve)) * sensitivity * intensity)
-            (loss <- ifelse(loss > (concern.start * (1-reserve)), (concern.start * (1-reserve)),
-                           loss))
+            (loss <- (((concern.start * (1-reserve)) * sensitivity * intensity)^(loss.exponent))*loss.scale)
+            # If the loss is greater than the concern in the productive zone, then everything, but no more than that, is lost in the productive zone
+            (loss <- ifelse(loss > (concern.start * (1-reserve)), (concern.start * (1-reserve)), loss))
             (concern <- concern.start - loss)
             (impact <- (concern.start/concern.start) * sensitivity * (1 / efficiency))
             temp.df <- cbind.data.frame(demand, reserve, sensitivity, impact, concern, intensity, loss)
@@ -164,31 +192,50 @@ duration <- 7
 
 # Calculate costs for particular scenario ####
 
-reserve.start <- 0.1
-sensitivity.start <- 0.5
-budget <- 0
+# Starting conditions
+reserve.start <- 0.25
+sensitivity.start <- 0.25
+budget <- -1000
+
+# Costs associated with reserves
+reserve.change.price <- 1 # Price to move reserve by 0.1
+reserve.change.exponent <- 1 # x > 1 = exponentially less expensive. 1 < x < 0 = exponentially more expensive
+reserve.ongoing.price <- 1 # Ongoing cost of reserving whole seascape
+reserve.ongoing.exponent <- 1
+
+# Costs associated with impact
+sensitivity.change.price <- 1 # Price to move sensitivity by 0.1
+sensitivity.change.exponent <- 1 # x > 1 = exponentially less expensive. 1 < x < 0 = exponentially more expensive
+sensitivity.ongoing.price <- 1 # Ongoing cost of keeping sensitivity at 0
+sensitivity.ongoing.exponent <- 1
+
+# Costs associated with product
+product.price <- 0 # Revenue per unit of product
+intensity.price <- 0 # Expenses per unit of intensity
+services.price <- 0 # Revenue per unit of concern
+
 costs.df <- results.df %>% 
-  mutate(reserve.change.cost = abs(reserve.start-reserve)*0.1,
-         sensitivity.change.cost = abs(sensitivity.start-sensitivity)*10,
+  mutate(reserve.change.cost = (abs(reserve.start-reserve)^reserve.change.exponent)*reserve.change.price,
+         sensitivity.change.cost = (abs(sensitivity.start-sensitivity)^sensitivity.change.exponent)*sensitivity.change.price,
          total.change.cost = (sqrt((reserve.change.cost^2)+(sensitivity.change.cost^2)))*(concern/concern),
-         reserve.ongoing.cost = reserve*0.01,
-         sensitivity.ongoing.cost = (1-sensitivity)*1,
+         reserve.ongoing.cost = (reserve*reserve.ongoing.price)^reserve.ongoing.exponent,
+         sensitivity.ongoing.cost = ((1-sensitivity)*sensitivity.ongoing.price)^sensitivity.ongoing.exponent,
          total.ongoing.cost = (reserve.ongoing.cost + sensitivity.ongoing.cost)*(concern/concern),
-         revenue.ongoing = demand*5,
-         expenses.ongoing = intensity*1,
-         services.ongoing = concern*1,
+         revenue.ongoing = demand*product.price,
+         expenses.ongoing = intensity*intensity.price,
+         services.ongoing = concern*services.price,
          net.cost = (total.change.cost+total.ongoing.cost-revenue.ongoing+expenses.ongoing-services.ongoing)*-1)
 
 # Plot costs for a particular scenario ####
 
-plot.df <- costs.df %>% filter(demand == demand.spec)
-optimal <- plot.df %>% filter(net.cost >= 0) %>% 
+plot.df <- costs.df %>% filter(demand == min(demand.spec))
+optimal <- plot.df %>% filter(net.cost >= budget) %>% 
   slice_max(concern) #%>% 
   #slice_max(net.cost)
 
 costs.plot <- ggplot() +
-  geom_raster(data = plot.df, aes(x = reserve, y = sensitivity, z = demand, fill = concern)) +
-  geom_textcontour(data = plot.df, aes(x = reserve, y = sensitivity, z = net.cost, text = stat(level), colour = "Net profit/loss")) +
+  geom_raster(data = plot.df, aes(x = reserve, y = sensitivity, fill = concern)) +
+  geom_textcontour(data = plot.df, aes(x = reserve, y = sensitivity, z = net.cost, colour = "Net profit/loss")) +
   scale_colour_manual(name = "Costs", values = c("Net profit/loss" = "white")) +
   guides(colour = guide_legend(override.aes = aes(label = "1"))) +
   theme_bw() +
