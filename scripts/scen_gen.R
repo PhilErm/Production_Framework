@@ -106,7 +106,10 @@ concern.plot
 
 # Generate results ####
 
-results.df <- data.frame()
+#results.df <- data.frame()
+results.list <- list()
+iterations <- 1
+start.time <- Sys.time()
 for(i in demand.spec){ # Demand
   for(j in reserve.spec){ # Reserve size
     for(k in sensitivity.spec){ # Sensitivity
@@ -137,22 +140,33 @@ for(i in demand.spec){ # Demand
             (concern <- concern.start - loss)
             (impact <- (concern.start/concern.start) * sensitivity * (1 / efficiency))
             temp.df <- cbind.data.frame(demand, reserve, sensitivity, impact, concern, intensity, loss)
-            results.df <- rbind.data.frame(results.df, temp.df)
+            #results.df <- rbind.data.frame(results.df, temp.df)
+            results.list[[iterations]] <- temp.df
+            iterations <- iterations+1
           } else {
             temp.df <- cbind.data.frame(demand, reserve, sensitivity, impact, concern, intensity, loss)
-            results.df <- rbind.data.frame(results.df, temp.df)
+            #results.df <- rbind.data.frame(results.df, temp.df)
+            results.list[[iterations]] <- temp.df
+            iterations <- iterations+1
           }
         } else {
           temp.df <- cbind.data.frame(demand, reserve, sensitivity, impact, concern, intensity, loss)
-          results.df <- rbind.data.frame(results.df, temp.df)
+          #results.df <- rbind.data.frame(results.df, temp.df)
+          results.list[[iterations]] <- temp.df
+          iterations <- iterations+1
         }
       } else {
         temp.df <- cbind.data.frame(demand, reserve, sensitivity, impact, concern, intensity, loss)
-        results.df <- rbind.data.frame(results.df, temp.df)
+        #results.df <- rbind.data.frame(results.df, temp.df)
+        results.list[[iterations]] <- temp.df
+        iterations <- iternations+1
       }
     }
   }
 }
+results.df <- data.table::rbindlist(results.list)
+end.time <- Sys.time()
+(simulation.time <- end.time - start.time)
 
 # Process results ####
 
