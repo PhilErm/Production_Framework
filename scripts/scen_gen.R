@@ -14,7 +14,7 @@ library(ggnewscale)
 # Parameters ####
 
 # Simulation range
-demand.spec <- seq(0.1,0.1,0) # Spectrum of demands to explore
+demand.spec <- seq(0.1,1,0.1) # Spectrum of demands to explore
 reserve.spec <- seq(0,0.99,0.01) # Spectrum of reserve sizes to explore
 sensitivity.spec <- seq(0.01,1,0.01) # Spectrum of sensitivities to explore
 
@@ -106,7 +106,6 @@ concern.plot
 
 # Generate results ####
 
-#results.df <- data.frame()
 results.list <- list()
 iterations <- 1
 start.time <- Sys.time()
@@ -140,36 +139,30 @@ for(i in demand.spec){ # Demand
             (concern <- concern.start - loss)
             (impact <- (concern.start/concern.start) * sensitivity * (1 / efficiency))
             temp.df <- cbind.data.frame(demand, reserve, sensitivity, impact, concern, intensity, loss)
-            #results.df <- rbind.data.frame(results.df, temp.df)
             results.list[[iterations]] <- temp.df
             iterations <- iterations+1
           } else {
             temp.df <- cbind.data.frame(demand, reserve, sensitivity, impact, concern, intensity, loss)
-            #results.df <- rbind.data.frame(results.df, temp.df)
             results.list[[iterations]] <- temp.df
             iterations <- iterations+1
           }
         } else {
           temp.df <- cbind.data.frame(demand, reserve, sensitivity, impact, concern, intensity, loss)
-          #results.df <- rbind.data.frame(results.df, temp.df)
           results.list[[iterations]] <- temp.df
           iterations <- iterations+1
         }
       } else {
         temp.df <- cbind.data.frame(demand, reserve, sensitivity, impact, concern, intensity, loss)
-        #results.df <- rbind.data.frame(results.df, temp.df)
         results.list[[iterations]] <- temp.df
         iterations <- iternations+1
       }
     }
   }
 }
-results.df <- data.table::rbindlist(results.list)
-end.time <- Sys.time()
-(simulation.time <- end.time - start.time)
 
 # Process results ####
 
+results.df <- data.table::rbindlist(results.list)
 results.df$concern[results.df$concern < 0] <- 0 # Change any negative concerns to 0
 results.df$concern[results.df$concern > concern.start] <- concern.start # Reduce any losses above limit
 results.df <- results.df %>% mutate(production.area = (1-reserve)) # Calculate the area put in production
