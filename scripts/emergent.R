@@ -66,19 +66,34 @@ system <- function(t, n, parameters){
   })
 }
 
-# Specify parameters
-reserve.size <- 0.001
-targeted.q <- 0.1
-q.modifier <- 1
+# Simulation range
 targeted.r <- 1
 common.K <- 1
+reserve.size <- 0
+demand.spec <- seq(((targeted.r*common.K/4)*(1-reserve.size))*0.5,((targeted.r*common.K/4)*(1-reserve.size))*0.5,0) # Spectrum of demands to explore
+reserve.spec <- seq(0,0.9,0.1) # Spectrum of reserve sizes to explore
+sensitivity.spec <- seq(0.2,2,0.2) # Spectrum of sensitivities to explore
+
+results.list <- list()
+iterations <- 1
+start.time <- Sys.time()
+for(i in demand.spec){ # Demand
+  for(j in reserve.spec){ # Reserve size
+    for(k in sensitivity.spec){ # Sensitivity
+      
+# Specify parameters
+reserve.size <- j
+targeted.q <- 0.1
+q.modifier <- k
 common.m <- 0.3
-catch <- ((targeted.r*common.K/4)*(1-reserve.size))*0.5
-
-
+catch <- i
+demand <- catch
+reserve <- reserve.size
+sensitivity <- q.modifier
+print(paste("demand", demand, "reserve", reserve, "sensitivity", sensitivity, sep = " "))
 
 parameters <- c(s=reserve.size, c=catch, # Universal
-                r=targeted.r, K=common.K, q=targeted.q*q.modifier, m=common.m, # Target
+                r=targeted.r, K=common.K, q=targeted.q, m=common.m, # Target
                 r1=0.5, K1=common.K, q1=0.20*q.modifier, m1=common.m, # Non-target 1
                 r2=0.5, K2=common.K, q2=0.30*q.modifier, m2=common.m, # Non-target 2
                 r3=0.5, K3=common.K, q3=0.40*q.modifier, m3=common.m, # Non-target 3
@@ -107,7 +122,8 @@ time <- seq(0,50,1)
 output <- ode(y = initial.n, 
            times = time, 
            func = system, 
-           parms = parameters)
+           parms = parameters,
+           maxsteps = 50)
 
 # Process results ####
 
@@ -175,14 +191,31 @@ gm.mean <- function(x){
 }
 
 (concern <- gm.mean(results.summary$value))
-(demand <- catch)
-(sensitivity <- q.modifier)
-(reserve <- reserve.size)
-(results.summary <- cbind.data.frame(concern,demand,reserve,sensitivity))
+time <- last(time)
+(results.summary <- cbind.data.frame(concern,demand,reserve,sensitivity,time))
+results.list[[iterations]] <- results.summary
+iterations <- iterations+1
+    }
+  }
+}
+results.df <- data.table::rbindlist(results.list)
+results.df$concern[results.df$concern < 0] <- 0 # Change any negative concerns to 0
+results.df <- results.df %>% 
+  filter(time == 50)
 
-# Stick all this in a loop and watch it go around
-# The hard part will be dealing with what happens when catch can't be fulfilled. Since we specify catch
-# we can probably create some condition for dealing with that though
-# After that it just feeds into your typical figure code.
-# Might be an issue with simulation time here, but only have to do it once or to a decent standard.
-# Let's make a goal
+#View(results.df)
+
+plotly::plot_ly(
+  results.df %>% filter(!is.na(concern)),
+  x = ~demand,
+  y = ~reserve,
+  z = ~sensitivity,
+  color = ~concern)
+
+ggplot(results.df, aes(x = reserve, y = sensitivity, z = demand, fill = concern)) +
+  geom_raster() +
+  scale_fill_viridis_c(name = "Concern", na.value = "transparent") +
+  scale_x_continuous(name = "Reserve") +
+  scale_y_continuous(name = "Sensitivity")
+
+# And that's done. Just simulate with a better resolution
